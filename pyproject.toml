@@ -1,0 +1,25 @@
+[project]
+name = "discord-mcp-bot"
+version = "0.1.0"
+description = "MCP server for reading, searching, and posting Discord messages as a bot"
+readme = "README.md"
+authors = [
+    { name = "Rich Stephens", email = "richswww@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp[cli]>=2.2.0",
+]
+
+[project.scripts]
+discord-mcp-bot = "discord_mcp_bot:main"
+
+[build-system]
+requires = ["uv_build>=0.12.2,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
