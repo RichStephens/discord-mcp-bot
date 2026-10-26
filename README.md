@@ -183,7 +183,7 @@ Things to know:
 - **If a name could mean more than one thing,** like "coco" when both `#coco-help` and `#coco-dev` exist, you're asked to pick. It won't guess.
 - **It remembers where you were.** If you leave out the server or channel, it uses the one you used last, including the last channel you used in each server. "Post that there" works.
 - **Messages can be given as links.** In Discord, right-click a message and choose **Copy Message Link**, then say "delete this: *link*" or "reply to *link*".
-- **The bot never pings everyone.** `@everyone`, `@here`, and role mentions are switched off. Mentioning a single person still notifies them.
+- **The bot never pings everyone.** `@everyone`, `@here`, and role mentions are switched off. `@name` notifies one person: the bot turns it into a real mention when exactly one member's username, display name or nickname is `name`, and leaves it as plain text otherwise (and inside code). Edits don't notify anyone.
 - **Search results don't include reactions.** Discord's search leaves them out. To see a found message's reactions, ask to read the channel around it.
 - **Spaces in file names become underscores** when uploaded. Discord does this to every upload.
 - **Everything the bot posts appears under the bot's name,** not yours.

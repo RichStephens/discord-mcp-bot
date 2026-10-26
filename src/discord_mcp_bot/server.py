@@ -365,6 +365,48 @@ async def _resolve_authors(g: dict, authors: list[str]) -> list[str]:
     return ids
 
 
+MENTION = re.compile(r"(?<![\w<@`])@([A-Za-z0-9_.]{2,32})")
+CODE = re.compile(r"(```.*?```|`[^`\n]*`)", re.S)
+
+
+async def _member_id(g: dict, name: str) -> str | None:
+    try:
+        members = await _request(
+            "GET", f"/guilds/{g['id']}/members/search", params={"query": name, "limit": 10}
+        )
+    except DiscordError:
+        return None
+    hits = {
+        m["user"]["id"]
+        for m in members
+        if name.casefold()
+        in (n.casefold() for n in (m.get("nick"), m["user"].get("global_name"), m["user"]["username"]) if n)
+    }
+    return hits.pop() if len(hits) == 1 else None
+
+
+async def _link_mentions(g: dict, content: str) -> tuple[str, list[str]]:
+    """Discord only pings <@id>, so put one in for @name when exactly one member has that name."""
+    pieces = CODE.split(content)
+    ids: dict[str, str | None] = {}
+    for text in pieces[::2]:
+        for name in MENTION.findall(text):
+            if name not in ids and name.casefold() not in ("everyone", "here"):
+                ids[name] = await _member_id(g, name)
+    if not any(ids.values()):
+        return content, []
+    for i in range(0, len(pieces), 2):
+        pieces[i] = MENTION.sub(lambda m: f"<@{ids[m[1]]}>" if ids.get(m[1]) else m[0], pieces[i])
+    content = "".join(pieces)
+    if len(content) > MAX_CONTENT:
+        raise DiscordError(f"With mentions linked the message is over {MAX_CONTENT} characters")
+    return content, [n for n, i in ids.items() if i]
+
+
+def _tagged(names: list[str]) -> str:
+    return f" Tagged: {', '.join('@' + n for n in names)}." if names else ""
+
+
 @mcp.tool(annotations=READ)
 async def list_servers() -> str:
     """List the Discord servers the bot is a member of."""
@@ -501,7 +543,7 @@ async def send_message(
     attachments: Annotated[list[str] | None, Field(description="Local file paths to attach (max 10)")] = None,
     reply_to: Annotated[str | None, Field(description="Message ID or link to reply to")] = None,
 ) -> str:
-    """Post a message, optionally with file attachments or as a reply. @everyone and role pings are suppressed."""
+    """Post a message, optionally with file attachments or as a reply. @name pings the one member whose username, display name or nickname is exactly name; @everyone and role pings are suppressed."""
     if reply_to:
         reply_to, server, channel = _parse_message(reply_to, server, channel)
     paths = [Path(p).expanduser() for p in attachments or []]
@@ -516,6 +558,7 @@ async def send_message(
         raise DiscordError("Attachments exceed 25 MiB total")
 
     g, c = await _resolve(server, channel)
+    content, tagged = await _link_mentions(g, content)
     payload: dict = {"content": content, "allowed_mentions": {"parse": ["users"], "replied_user": True}}
     if reply_to:
         payload["message_reference"] = {"message_id": reply_to, "fail_if_not_exists": False}
@@ -531,7 +574,7 @@ async def send_message(
         )
     else:
         msg = await _request("POST", f"/channels/{c['id']}/messages", json=payload)
-    return f"Sent to {_where(g, c)}. {_link(g, msg)}\n\n{_fmt_message(msg)}"
+    return f"Sent to {_where(g, c)}. {_link(g, msg)}{_tagged(tagged)}\n\n{_fmt_message(msg)}"
 
 
 @mcp.tool(annotations=WRITE)
@@ -541,15 +584,16 @@ async def edit_message(
     channel: Channel = None,
     server: Server = None,
 ) -> str:
-    """Replace the text of a message the bot posted. Attachments are kept."""
+    """Replace the text of a message the bot posted. Attachments are kept. @name links a member as in send_message, but Discord doesn't notify anyone on an edit."""
     message_id, server, channel = _parse_message(message, server, channel)
     g, c = await _resolve(server, channel)
+    content, tagged = await _link_mentions(g, content)
     msg = await _request(
         "PATCH",
         f"/channels/{c['id']}/messages/{message_id}",
         json={"content": content, "allowed_mentions": {"parse": ["users"]}},
     )
-    return f"Edited in {_where(g, c)}. {_link(g, msg)}\n\n{_fmt_message(msg)}"
+    return f"Edited in {_where(g, c)}. {_link(g, msg)}{_tagged(tagged)}\n\n{_fmt_message(msg)}"
 
 
 @mcp.tool(annotations=DELETE)

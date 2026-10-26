@@ -241,3 +241,21 @@ def test_discord_errors_reach_the_user(discord):
     discord.forbidden.add("10")
     with pytest.raises(ToolError, match="Discord 403: Missing Access"):
         run(srv.mcp.call_tool("read_messages", {"channel": "general", "server": "fujinet"}))
+
+
+def test_send_links_mentions(discord):
+    out = run(srv.send_message("@tschak909 @Thomas `@thomasx` @thom @nobody @everyone hi", channel="coco-help"))
+    sent = json.loads(discord.last("POST").content)["content"]
+    assert sent == "<@7> <@8> `@thomasx` @thom @nobody @everyone hi"
+    assert "Tagged: @tschak909, @Thomas." in header(out)
+
+
+def test_edit_links_mentions(discord):
+    out = run(srv.edit_message("https://discord.com/channels/1/30/555", "ping @tschak909"))
+    assert json.loads(discord.last("PATCH").content)["content"] == "ping <@7>"
+    assert "Tagged: @tschak909." in header(out)
+
+
+def test_send_without_mentions_skips_member_lookup(discord):
+    run(srv.send_message("no pings here", channel="coco-help"))
+    assert not any("/members/" in r.url.path for r in discord.requests)
